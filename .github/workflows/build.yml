@@ -1,0 +1,27 @@
+name: Build
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            bin: radar-arpa-trainer.exe
+            name: radar-arpa-trainer-windows
+          - os: macos-latest
+            bin: radar-arpa-trainer
+            name: radar-arpa-trainer-macos
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo test --release
+      - run: cargo build --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: target/release/${{ matrix.bin }}
