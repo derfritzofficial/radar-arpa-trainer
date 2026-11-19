@@ -43,6 +43,11 @@ PLIST
 # Ad-hoc-Signatur (nötig auf Apple Silicon, keine Entwickler-ID erforderlich)
 codesign --force --deep --sign - "${APP}" >/dev/null 2>&1 || true
 
+# Finder/Dock auf das neue Icon hinweisen (sonst zeigt macOS ggf. noch das alte aus dem Cache)
+touch "${APP}"
+LSREG=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
+[[ -x "$LSREG" ]] && "$LSREG" -f "${APP}" >/dev/null 2>&1 || true
+
 echo "Fertig: ${APP}"
 
 if [[ "${1:-}" == "--install" ]]; then

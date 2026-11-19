@@ -10,6 +10,7 @@ mod radar;
 mod sim;
 mod templates;
 mod util;
+mod workbook;
 
 /// App-Icon (Fenster, Dock, Taskleiste) aus dem eingebetteten PNG.
 fn app_icon() -> Option<eframe::egui::IconData> {

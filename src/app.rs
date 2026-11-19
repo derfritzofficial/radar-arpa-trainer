@@ -73,6 +73,7 @@ enum AppMode {
     Start,
     Sim,
     Plot,
+    Workbook,
 }
 
 /// Grundfarbe der Bedienoberfläche – unabhängig von der Systemeinstellung.
@@ -133,7 +134,7 @@ impl UiTheme {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-enum ColorScheme {
+pub(crate) enum ColorScheme {
     Blue,
     Yellow,
     Green,
@@ -451,7 +452,7 @@ pub(crate) fn section(ui: &mut egui::Ui, title: &str) {
     ui.separator();
 }
 
-fn make_palette(scheme: ColorScheme, brill: f32, bg_level: f32) -> [Color32; 256] {
+pub(crate) fn make_palette(scheme: ColorScheme, brill: f32, bg_level: f32) -> [Color32; 256] {
     let (bg0, lo, hi) = scheme.colors();
     // unter 1: abdunkeln; über 1: Richtung hellerer Tönung des Schemas aufhellen
     // (funktioniert auch bei fast schwarzen Hintergründen)
@@ -610,6 +611,7 @@ pub struct RadarApp {
     demo: Option<Demo>,
     mode: AppMode,
     plot: crate::plot::PlotState,
+    workbook: crate::workbook::Workbook,
     demo_frames: u32,
 
     real_time: f64,
@@ -631,6 +633,15 @@ impl RadarApp {
         };
         crate::i18n::set_lang(lang);
         UiTheme::Dark.apply(&cc.egui_ctx);
+        // Pfeile und Sonderzeichen (→ ⇒ ↑ √ …) fehlen in der Proportionalschrift –
+        // die Monospace-Schrift Hack als Rückfallschrift ergänzen
+        let mut fonts = egui::FontDefinitions::default();
+        if let Some(fam) = fonts.families.get_mut(&egui::FontFamily::Proportional) {
+            if !fam.iter().any(|f| f == "Hack") {
+                fam.insert(1, "Hack".to_owned());
+            }
+        }
+        cc.egui_ctx.set_fonts(fonts);
         cc.egui_ctx.style_mut(|s| {
             s.spacing.item_spacing = vec2(6.0, 4.0);
             s.spacing.slider_width = 150.0;
@@ -713,6 +724,7 @@ impl RadarApp {
             demo: Demo::from_env(),
             mode: AppMode::Start,
             plot: crate::plot::PlotState::new(),
+            workbook: crate::workbook::Workbook::new(),
             demo_frames: 0,
         };
         app.load_scenario(Scenario::Empty);
@@ -731,8 +743,17 @@ impl RadarApp {
             app.mode = match std::env::var("RADAR_DEMO_MODE").as_deref() {
                 Ok("plot") => AppMode::Plot,
                 Ok("start") => AppMode::Start,
+                Ok("workbook") => AppMode::Workbook,
                 _ => AppMode::Sim,
             };
+            if let Some(n) = std::env::var("RADAR_DEMO_CHAPTER")
+                .ok()
+                .and_then(|v| v.parse::<usize>().ok())
+            {
+                if let Some(ch) = crate::workbook::Chapter::ALL.get(n) {
+                    app.workbook.current = *ch;
+                }
+            }
             if std::env::var_os("RADAR_DEMO_COCK").is_some() {
                 app.plot.show_cockcroft = true;
             }
@@ -2370,8 +2391,8 @@ impl RadarApp {
                     ui.label(RichText::new(t("Bitte Arbeitsumgebung wählen", "Please choose a working environment")).size(17.0));
                     ui.add_space(30.0);
                 });
-                let w = 340.0;
-                let total = w * 2.0 + 40.0;
+                let w = ((ui.available_width() - 80.0) / 3.0).clamp(220.0, 320.0);
+                let total = w * 3.0 + 60.0;
                 ui.horizontal(|ui| {
                     ui.add_space(((ui.available_width() - total) / 2.0).max(0.0));
                     let card = |ui: &mut egui::Ui, title: &str, text: &str| -> bool {
@@ -2392,7 +2413,7 @@ impl RadarApp {
                     ) {
                         self.mode = AppMode::Sim;
                     }
-                    ui.add_space(40.0);
+                    ui.add_space(30.0);
                     if card(
                         ui,
                         t("📝  PLOTTUMGEBUNG", "📝  PLOTTING"),
@@ -2402,6 +2423,17 @@ impl RadarApp {
                         ),
                     ) {
                         self.mode = AppMode::Plot;
+                    }
+                    ui.add_space(30.0);
+                    if card(
+                        ui,
+                        t("📖  ARBEITSBUCH", "📖  WORKBOOK"),
+                        t(
+                            "Radarphänomene zum Ausprobieren: X/S-Band, Auflösung, Falschechos, Stabilisierung, Relativvektor, Plotten – mit Übungsfragen.",
+                            "Radar phenomena to try out: X/S-band, resolution, false echoes, stabilisation, relative vector, plotting – with practice questions.",
+                        ),
+                    ) {
+                        self.mode = AppMode::Workbook;
                     }
                 });
                 ui.add_space(30.0);
@@ -2439,6 +2471,44 @@ impl RadarApp {
                 self.request_snapshot(ctx, path);
             }
             ctx.request_repaint();
+        }
+    }
+
+    fn workbook_mode(&mut self, ctx: &egui::Context) {
+        egui::TopBottomPanel::top("wb_top").show(ctx, |ui| {
+            ui.horizontal_wrapped(|ui| {
+                ui.label(
+                    RichText::new(t("RADAR – Arbeitsbuch", "RADAR – workbook"))
+                        .strong()
+                        .color(adapt(ui, Color32::from_rgb(140, 200, 255))),
+                );
+                ui.separator();
+                self.common_bar(ui);
+            });
+        });
+        egui::SidePanel::left("wb_nav")
+            .resizable(false)
+            .exact_width(270.0)
+            .show(ctx, |ui| {
+                egui::ScrollArea::vertical()
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| self.workbook.nav_panel(ui));
+            });
+        let mut action = crate::workbook::WbAction::None;
+        egui::CentralPanel::default().show(ctx, |ui| {
+            action = self.workbook.content(ui);
+        });
+        if let crate::workbook::WbAction::OpenInPlot {
+            own_course,
+            own_speed,
+            target,
+        } = action
+        {
+            self.plot.own_course = own_course;
+            self.plot.own_speed = own_speed;
+            self.plot.targets = vec![target];
+            self.plot.sel = 0;
+            self.mode = AppMode::Plot;
         }
     }
 
@@ -3792,6 +3862,11 @@ impl eframe::App for RadarApp {
             }
             AppMode::Plot => {
                 self.plot_mode(ctx);
+                self.demo_frame_snapshot(ctx);
+                return;
+            }
+            AppMode::Workbook => {
+                self.workbook_mode(ctx);
                 self.demo_frame_snapshot(ctx);
                 return;
             }

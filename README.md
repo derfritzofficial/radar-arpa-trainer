@@ -53,6 +53,30 @@ oder **Plottumgebung** (klassisches Radarplotten). Über „⟲ Modus“ oben ka
 gewechselt werden. Die Sprache (Deutsch/Englisch) folgt der Systemeinstellung und ist
 im Programm umschaltbar.
 
+## Arbeitsbuch
+
+Der dritte Modus macht die wichtigsten Radarphänomene interaktiv erlebbar – in 13 Kapiteln
+(plus Einführung) mit Reglern, Erklärung, Merke-Kasten, Querverweisen und Übungsfragen:
+
+| Kapitel | Inhalt |
+|---|---|
+| 1 Welle & Frequenzbänder | f, λ, X/S-Band, Polarisation |
+| 2 X- und S-Band | zwei Radare live nebeneinander (Regen, Seegang, Gain/STC/FTC), Antennenlänge für gleiche Keule |
+| 3 Antenne & Radarkeule | Richtdiagramm kartesisch/polar, 70·λ/D, Nebenkeulen, Nah-/Fernfeld, Beam Steering |
+| 4 Radiale Auflösung | ΔR = c·τ/2 am A-Scope, Bereich/Puls/PRF, Pulskompression mit Nebenzipfeln |
+| 5 Azimutale Auflösung | Keulendurchlauf, Echoverbreiterung, ΔA = R·θ |
+| 6 Reichweite | Radarhorizont 2,2·(√h₁+√h₂), Radargleichung (1/R⁴), PRF-Reichweite |
+| 7 Mehrfach- und Falschechos | Mehrfach-, indirekte, Nebenkeulen- und Überreichweiten-Echos |
+| 8 Signalverarbeitung | A-Scope-Kette Rohsignal → STC → FTC → Gain/Schwelle → A/D-Abtastung, Tune nach Kaltstart |
+| 9 Darstellung | A-Scope/PPI, Head/North/Course Up, RM/TM, relative/wahre Trails, Kompassausfall |
+| 10 Stabilisierung | wahre Vektoren über Grund vs. durchs Wasser, Strom an festen Objekten |
+| 11 Relativvektor | Verhalten bei eigener Kursänderung, Vb = Va + Vbr, stehende Peilung |
+| 12 Manuelles Plotten | 11 Schritte mit Rechnung und Lupe, Vorlagen „Beispiel“ und „Übung“, Übergabe an die Plottumgebung |
+| 13 Weg–Zeit–Fahrt | eine Aufgabe, drei Hilfsmittel: Nomogramm (Lineal), Zirkelmethode auf der logarithmischen Skala, Rechenschieber nach Art des Portland Speed-Time-Distance Calculators (Sekunden/Minuten/Stunden); Zufallsaufgaben mit verdecktem Ergebnis; Rechenscheibe als Variante |
+
+Am Ende jedes Kapitels stehen frei erfundene Übungsfragen mit Lösungsweg (Deutsch/Englisch);
+die Antworten lassen sich am Modell des Kapitels nachvollziehen.
+
 ## Standard-Templates
 
 - **Simulation** startet mit Szenario „Freies Fahren (leer)“, X-Band, 12 NM. „💾 Als Standard“
@@ -118,7 +142,9 @@ weitergegeben werden.
   Start Rechtsklick → „Öffnen“.)
 - **Windows:** Die Release-`.exe` (`cargo build --release`) startet ohne Konsolenfenster und trägt
   das Icon direkt in der Datei.
-- Das Icon wird mit `python3 scripts/make_icon.py` (Pillow) neu erzeugt.
+- Das Icon wird mit `python3 scripts/make_icon.py` (Pillow) neu erzeugt. Die macOS-Kachel folgt
+  Apples Raster (Squircle 824 px auf 1024 px, ohne Schatten) – sonst setzt macOS 26 das Icon
+  verkleinert in einen grauen Rahmen.
 
 ### Windows
 1. Rust installieren (rustup-init.exe, Standardoptionen inkl. „Visual Studio Build Tools“).
