@@ -110,6 +110,16 @@ Das fertige Programm liegt danach unter `target/release/radar-arpa-trainer`
 (Windows: `target\release\radar-arpa-trainer.exe`) und kann ohne weitere Dateien
 weitergegeben werden.
 
+### Ohne Terminal starten
+
+- **macOS:** `./scripts/build-macos-app.sh` erzeugt `dist/Radar ARPA Trainer.app` mit eigenem Icon.
+  Per Doppelklick starten – es öffnet sich kein Terminal. Mit `--install` wird die App zusätzlich
+  nach `/Applications` kopiert. (Eine aus GitHub geladene App ist nur ad-hoc signiert; beim ersten
+  Start Rechtsklick → „Öffnen“.)
+- **Windows:** Die Release-`.exe` (`cargo build --release`) startet ohne Konsolenfenster und trägt
+  das Icon direkt in der Datei.
+- Das Icon wird mit `python3 scripts/make_icon.py` (Pillow) neu erzeugt.
+
 ### Windows
 1. Rust installieren (rustup-init.exe, Standardoptionen inkl. „Visual Studio Build Tools“).
 2. Im Projektordner: `cargo build --release`
@@ -123,8 +133,9 @@ weitergegeben werden.
 Optional als `.app`-Bundle: `cargo install cargo-bundle && cargo bundle --release`.
 
 ### Automatische Builds für beide Systeme
-`.github/workflows/build.yml` baut bei jedem Push auf GitHub eine Windows-`.exe`
-und eine macOS-Version und stellt sie als Download-Artefakte bereit.
+`.github/workflows/build.yml` baut bei jedem Push auf GitHub die Windows-`.exe` (mit Icon)
+und das macOS-App-Paket (`Radar-ARPA-Trainer-macOS.zip`) und stellt sie unter
+Actions → Build → Artifacts zum Download bereit.
 
 ## Tests
 

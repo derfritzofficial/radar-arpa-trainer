@@ -11,9 +11,37 @@ mod sim;
 mod templates;
 mod util;
 
+/// App-Icon (Fenster, Dock, Taskleiste) aus dem eingebetteten PNG.
+fn app_icon() -> Option<eframe::egui::IconData> {
+    let bytes: &[u8] = include_bytes!("../assets/icon_256.png");
+    let mut dec = png::Decoder::new(bytes);
+    dec.set_transformations(png::Transformations::normalize_to_color8());
+    let mut reader = dec.read_info().ok()?;
+    let mut buf = vec![0; reader.output_buffer_size()];
+    let info = reader.next_frame(&mut buf).ok()?;
+    buf.truncate(info.buffer_size());
+    let rgba = match info.color_type {
+        png::ColorType::Rgba => buf,
+        png::ColorType::Rgb => buf
+            .chunks(3)
+            .flat_map(|c| [c[0], c[1], c[2], 255])
+            .collect(),
+        _ => return None,
+    };
+    Some(eframe::egui::IconData {
+        rgba,
+        width: info.width,
+        height: info.height,
+    })
+}
+
 fn main() -> eframe::Result {
+    let mut viewport = eframe::egui::ViewportBuilder::default();
+    if let Some(icon) = app_icon() {
+        viewport = viewport.with_icon(icon);
+    }
     let options = eframe::NativeOptions {
-        viewport: eframe::egui::ViewportBuilder::default()
+        viewport: viewport
             .with_title("Radar / ARPA Trainer")
             .with_inner_size([1560.0, 960.0])
             .with_min_inner_size([1100.0, 700.0])
@@ -61,6 +89,13 @@ mod tests {
             t += dt;
         }
         (w, r, a)
+    }
+
+    #[test]
+    fn app_icon_decodes() {
+        let icon = crate::app_icon().expect("Icon muss dekodierbar sein");
+        assert_eq!((icon.width, icon.height), (256, 256));
+        assert_eq!(icon.rgba.len(), 256 * 256 * 4);
     }
 
     #[test]

@@ -5,17 +5,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
-    strategy:
-      matrix:
-        include:
-          - os: windows-latest
-            bin: radar-arpa-trainer.exe
-            name: radar-arpa-trainer-windows
-          - os: macos-latest
-            bin: radar-arpa-trainer
-            name: radar-arpa-trainer-macos
-    runs-on: ${{ matrix.os }}
+  windows:
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -23,5 +14,20 @@ jobs:
       - run: cargo build --release
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.name }}
-          path: target/release/${{ matrix.bin }}
+          name: radar-arpa-trainer-windows
+          path: target/release/radar-arpa-trainer.exe
+
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo test --release
+      - name: App-Paket bauen
+        run: ./scripts/build-macos-app.sh
+      - name: App zippen
+        run: ditto -c -k --keepParent "dist/Radar ARPA Trainer.app" "dist/Radar-ARPA-Trainer-macOS.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: radar-arpa-trainer-macos
+          path: dist/Radar-ARPA-Trainer-macOS.zip
