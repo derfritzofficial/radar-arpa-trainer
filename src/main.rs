@@ -44,6 +44,8 @@ fn main() -> eframe::Result {
     let options = eframe::NativeOptions {
         viewport: viewport
             .with_title("Radar / ARPA Trainer")
+            // Linux: Zuordnung zum .desktop-Eintrag (Icon in Dock/Taskleiste)
+            .with_app_id("radar-arpa-trainer")
             .with_inner_size([1560.0, 960.0])
             .with_min_inner_size([1100.0, 700.0])
             // Testläufe (RADAR_DEMO_SNAP) sollen keinen Fokus stehlen

@@ -49,8 +49,11 @@ auf **Windows**, **macOS** und Linux.
 ## Startauswahl
 
 Beim Start fragt das Programm nach der Arbeitsumgebung: **Simulation** (Radar mit ARPA)
-oder **Plottumgebung** (klassisches Radarplotten). Über „⟲ Modus“ oben kann jederzeit
-gewechselt werden. Die Sprache (Deutsch/Englisch) folgt der Systemeinstellung und ist
+oder **Plottumgebung** (klassisches Radarplotten) oder **Arbeitsbuch**. Das Haus-Symbol 🏠 oben
+links führt nach einer Rückfrage zurück zur Auswahl – die laufende Sitzung wird dabei beendet.
+Sprache und Oberfläche liegen im Zahnrad-Menü ⚙, in der Simulation zusätzlich Ausbilderansicht
+(wahre Ziele), Zeitraffer und Hilfe;
+💾 speichert die Einstellungen als Standard, ↺ setzt den Standard zurück. Die Sprache (Deutsch/Englisch) folgt der Systemeinstellung und ist
 im Programm umschaltbar.
 
 ## Arbeitsbuch
@@ -79,12 +82,12 @@ die Antworten lassen sich am Modell des Kapitels nachvollziehen.
 
 ## Standard-Templates
 
-- **Simulation** startet mit Szenario „Freies Fahren (leer)“, X-Band, 12 NM. „💾 Als Standard“
+- **Simulation** startet mit Szenario „Freies Fahren (leer)“, X-Band, 12 NM. 💾 (Als Standard)
   (zweite Zeile oben) speichert Radar-, ARPA-, Vektor-, Trail-, Darstellungs- und
   Eigenschiff-Einstellungen; das Szenario gehört nicht dazu, der Start erfolgt immer „leer“.
-- **Plottumgebung** startet mit nur Ziel A und leeren Eingaben. „💾 Als Standard“ speichert die
+- **Plottumgebung** startet mit nur Ziel A und leeren Eingaben. 💾 (Als Standard) speichert die
   aktuellen Einstellungen inkl. Ziele; „Neu (Standard)“ lädt sie wieder.
-- „↺ Standard zurücksetzen“ stellt jeweils die Werkseinstellung wieder her (die aktuelle Eingabe
+- ↺ (Standard zurücksetzen) stellt jeweils die Werkseinstellung wieder her (die aktuelle Eingabe
   bleibt bis zum nächsten Start bzw. „Neu“ erhalten).
 - Gespeichert wird als JSON unter `~/Library/Application Support/radar-arpa-trainer/` (macOS),
   `%APPDATA%\radar-arpa-trainer\` (Windows) bzw. `~/.config/radar-arpa-trainer/` (Linux).
@@ -158,10 +161,20 @@ weitergegeben werden.
 
 Optional als `.app`-Bundle: `cargo install cargo-bundle && cargo bundle --release`.
 
-### Automatische Builds für beide Systeme
-`.github/workflows/build.yml` baut bei jedem Push auf GitHub die Windows-`.exe` (mit Icon)
-und das macOS-App-Paket (`Radar-ARPA-Trainer-macOS.zip`) und stellt sie unter
-Actions → Build → Artifacts zum Download bereit.
+### Linux (Debian/Ubuntu, Fedora)
+1. Rust installieren (`curl https://sh.rustup.rs -sSf | sh`) und Bauabhängigkeiten:
+   - Debian/Ubuntu: `sudo apt install build-essential libxkbcommon-dev libgl1-mesa-dev libwayland-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev`
+   - Fedora: `sudo dnf install gcc libxkbcommon-devel mesa-libGL-devel wayland-devel libxcb-devel`
+2. `cargo build --release` und `./target/release/radar-arpa-trainer`
+3. Pakete: `cargo install cargo-deb cargo-generate-rpm`, dann `cargo deb` (`.deb`) bzw.
+   `cargo build --release && cargo generate-rpm` (`.rpm`) – mit Startmenü-Eintrag und Icon.
+
+### Automatische Builds
+`.github/workflows/build.yml` baut bei jedem Push auf GitHub die Windows-`.exe` (mit Icon),
+das macOS-App-Paket (`Radar-ARPA-Trainer-macOS.zip`) und die Linux-Pakete (`.deb` für
+Debian/Ubuntu, `.rpm` für Fedora) und stellt sie unter Actions → Build → Artifacts bereit.
+Installation unter Linux: `sudo apt install ./radar-arpa-trainer_*.deb` bzw.
+`sudo dnf install ./radar-arpa-trainer-*.rpm`.
 
 ## Tests
 

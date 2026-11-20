@@ -606,6 +606,8 @@ pub struct RadarApp {
     form: AddForm,
     show_help: bool,
     show_truth: bool,
+    /// Rückfrage „zurück zur Modusauswahl“ offen
+    confirm_home: bool,
     show_reltrack: bool,
     snap_path: Option<std::path::PathBuf>,
     demo: Option<Demo>,
@@ -712,6 +714,7 @@ impl RadarApp {
             },
             show_help: false,
             show_truth: false,
+            confirm_home: false,
             show_reltrack: true,
             real_time: 0.0,
             msg: None,
@@ -753,6 +756,9 @@ impl RadarApp {
                 if let Some(ch) = crate::workbook::Chapter::ALL.get(n) {
                     app.workbook.current = *ch;
                 }
+            }
+            if std::env::var_os("RADAR_DEMO_HOME").is_some() {
+                app.confirm_home = true;
             }
             if std::env::var_os("RADAR_DEMO_COCK").is_some() {
                 app.plot.show_cockcroft = true;
@@ -2236,13 +2242,14 @@ impl RadarApp {
     // -----------------------------------------------------------------------
 
     fn top_bar(&mut self, ui: &mut egui::Ui) {
-        ui.horizontal_wrapped(|ui| {
+        ui.horizontal(|ui| {
+            self.home_button(ui);
             ui.label(RichText::new("RADAR / ARPA TRAINER").strong().color(adapt(ui, Color32::from_rgb(140, 200, 255))));
             ui.separator();
             ui.label(t("Szenario:", "Scenario:"));
             let mut sc = self.scenario;
             egui::ComboBox::from_id_salt("scenario")
-                .width(300.0)
+                .width(230.0)
                 .selected_text(sc.name())
                 .show_ui(ui, |ui| {
                     for s in Scenario::ALL {
@@ -2250,21 +2257,27 @@ impl RadarApp {
                     }
                 });
             self.scenario = sc;
-            if ui.button(t("⟲ Laden / Neustart", "⟲ Load / restart")).clicked() {
+            if ui
+                .button(RichText::new("⟲").size(15.0))
+                .on_hover_text(t("Szenario laden / neu starten", "Load / restart scenario"))
+                .clicked()
+            {
                 self.load_scenario(self.scenario);
             }
             ui.separator();
-            if ui.button(if self.paused { t("▶ Weiter", "▶ Resume") } else { "⏸ Pause" }).clicked() {
+            if ui
+                .button(RichText::new(if self.paused { "▶" } else { "⏸" }).size(15.0))
+                .on_hover_text(if self.paused { t("Weiter (Leertaste)", "Resume (space)") } else { t("Pause (Leertaste)", "Pause (space)") })
+                .clicked()
+            {
                 self.paused = !self.paused;
             }
-            ui.label(t("Zeitraffer:", "Time warp:"));
-            for (i, w) in WARPS.iter().enumerate() {
-                if ui.selectable_label(self.warp_idx == i, format!("{}×", w)).clicked() {
-                    self.warp_idx = i;
-                }
-            }
-            ui.separator();
             ui.label(RichText::new(tf!("Simzeit {}", "Sim time {}", fmt_hms(self.world.time))).monospace());
+            let warp = WARPS[self.warp_idx];
+            if warp > 1.0 {
+                ui.label(RichText::new(format!("⏩ {}×", warp)).monospace().strong())
+                    .on_hover_text(t("Zeitraffer – einstellbar im Zahnrad-Menü oder mit 1–7", "Time warp – set in the gear menu or with 1–7"));
+            }
             ui.separator();
             if self.arpa.has_unacked() {
                 let blink = (self.real_time * 2.0) as i64 % 2 == 0;
@@ -2275,22 +2288,13 @@ impl RadarApp {
                 }
                 ui.separator();
             }
-            ui.checkbox(&mut self.show_truth, t("Ausbilder: wahre Ziele", "Instructor: true targets"))
-                .on_hover_text(t("Zeigt die tatsächlichen Positionen/Vektoren aller simulierten Ziele (magenta) zum Vergleich mit ARPA.", "Shows the actual positions/vectors of all simulated targets (magenta) for comparison with ARPA."));
-            self.mode_lang_bar(ui);
-        });
-        // zweite Reihe: Oberfläche, Foto, Hilfe, Szenariobeschreibung
-        ui.horizontal(|ui| {
-            self.theme_photo_bar(ui);
-            if ui.button(t("❓ Hilfe", "❓ Help")).clicked() {
-                self.show_help = !self.show_help;
-            }
-            ui.separator();
+            self.settings_menu(ui);
+            self.photo_button(ui);
             if ui
-                .button(t("💾 Als Standard", "💾 Save as standard"))
+                .button(RichText::new("💾").size(15.0))
                 .on_hover_text(t(
-                    "Aktuelle Radar-, ARPA-, Vektor-, Trail-, Darstellungs- und Eigenschiff-Einstellungen als Standard speichern. Das Szenario ist nicht enthalten – der Start erfolgt immer mit „leer“.",
-                    "Save the current radar, ARPA, vector, trail, display and own-ship settings as standard. The scenario is not included – start-up is always “empty”.",
+                    "Als Standard speichern: aktuelle Radar-, ARPA-, Vektor-, Trail-, Darstellungs- und Eigenschiff-Einstellungen als Standard speichern. Das Szenario ist nicht enthalten – der Start erfolgt immer mit „leer“.",
+                    "Save as standard: the current radar, ARPA, vector, trail, display and own-ship settings as standard. The scenario is not included – start-up is always “empty”.",
                 ))
                 .clicked()
             {
@@ -2300,10 +2304,10 @@ impl RadarApp {
                 }
             }
             if ui
-                .button(t("↺ Standard zurücksetzen", "↺ Reset standard"))
+                .button(RichText::new("↺").size(15.0))
                 .on_hover_text(t(
-                    "Standard-Template auf Werkseinstellung zurücksetzen (X-Band, 12 NM …). Die aktuellen Einstellungen bleiben bis zum nächsten Start erhalten.",
-                    "Reset the standard template to factory settings (X-band, 12 NM …). Current settings stay until the next start.",
+                    "Standard zurücksetzen: Standard-Template auf Werkseinstellung zurücksetzen (X-Band, 12 NM …). Die aktuellen Einstellungen bleiben bis zum nächsten Start erhalten.",
+                    "Reset standard: back to factory settings (X-band, 12 NM …). Current settings stay until the next start.",
                 ))
                 .clicked()
             {
@@ -2312,49 +2316,154 @@ impl RadarApp {
                     Err(e) => self.say(tf!("Zurücksetzen fehlgeschlagen: {}", "Reset failed: {}", e)),
                 }
             }
-            ui.separator();
-            ui.add(egui::Label::new(RichText::new(self.scenario.description()).italics().small()).truncate());
+            // Szenario-Hinweis; „keine Ziele …“ verschwindet, sobald das erste Ziel gesetzt ist
+            if !(self.scenario == Scenario::Empty && !self.world.targets.is_empty()) {
+                ui.separator();
+                ui.add(egui::Label::new(RichText::new(self.scenario.description()).italics().small()).truncate());
+            }
         });
     }
 
-    /// Moduswechsel, Sprache, Oberfläche, Foto – in beiden Modi oben rechts.
-    fn common_bar(&mut self, ui: &mut egui::Ui) {
-        self.mode_lang_bar(ui);
-        self.theme_photo_bar(ui);
-    }
-
-    /// Moduswechsel und Sprache.
-    fn mode_lang_bar(&mut self, ui: &mut egui::Ui) {
-        if ui
-            .button(t("⟲ Modus", "⟲ Mode"))
-            .on_hover_text(t(
-                "Zurück zur Auswahl Simulation / Plottumgebung",
-                "Back to the choice simulation / plotting",
-            ))
-            .clicked()
-        {
-            self.mode = AppMode::Start;
-        }
-        self.lang_combo(ui);
-    }
-
-    /// Oberfläche (Dunkel/Grau/Hell) und Bildschirmfoto.
-    fn theme_photo_bar(&mut self, ui: &mut egui::Ui) {
-        ui.label(t("Oberfläche:", "Interface:"));
-        let before = self.ui_theme;
-        egui::ComboBox::from_id_salt("ui_theme")
-            .width(80.0)
-            .selected_text(self.ui_theme.label())
-            .show_ui(ui, |ui| {
-                for th in [UiTheme::Dark, UiTheme::Gray, UiTheme::Light] {
-                    ui.selectable_value(&mut self.ui_theme, th, th.label());
+    /// Zahnrad-Menü: Sprache und Oberfläche; in der Simulation zusätzlich
+    /// Ausbilderansicht, Zeitraffer und Hilfe.
+    fn settings_menu(&mut self, ui: &mut egui::Ui) {
+        let sim = self.mode == AppMode::Sim;
+        ui.menu_button(RichText::new("⚙").size(16.0), |ui| {
+            ui.set_min_width(250.0);
+            ui.label(RichText::new(t("Einstellungen", "Settings")).strong());
+            ui.separator();
+            self.lang_theme_rows(ui);
+            if !sim {
+                return;
+            }
+            ui.separator();
+            ui.checkbox(&mut self.show_truth, t("Ausbilder: wahre Ziele", "Instructor: true targets"))
+                .on_hover_text(t("Zeigt die tatsächlichen Positionen/Vektoren aller simulierten Ziele (magenta) zum Vergleich mit ARPA.", "Shows the actual positions/vectors of all simulated targets (magenta) for comparison with ARPA."));
+            ui.add_space(4.0);
+            ui.label(t("Zeitraffer (Tasten 1–7):", "Time warp (keys 1–7):"));
+            ui.horizontal_wrapped(|ui| {
+                for (i, w) in WARPS.iter().enumerate() {
+                    if ui.selectable_label(self.warp_idx == i, format!("{}×", w)).clicked() {
+                        self.warp_idx = i;
+                    }
                 }
             });
-        if self.ui_theme != before {
-            self.ui_theme.apply(ui.ctx());
-        }
+            ui.add_space(4.0);
+            ui.separator();
+            if ui.button(t("❓ Hilfe (H / F1)", "❓ Help (H / F1)")).clicked() {
+                self.show_help = !self.show_help;
+                ui.close_menu();
+            }
+        })
+        .response
+        .on_hover_text(t("Einstellungen", "Settings"));
+    }
+
+    /// Haus-Symbol ganz links: zurück zur Modusauswahl (mit Rückfrage).
+    fn home_button(&mut self, ui: &mut egui::Ui) {
         if ui
-            .button(t("📷 Foto", "📷 Photo"))
+            .button(RichText::new("🏠").size(16.0))
+            .on_hover_text(t("Zurück zur Modusauswahl", "Back to the mode selection"))
+            .clicked()
+        {
+            self.confirm_home = true;
+        }
+    }
+
+    /// Rückfrage vor dem Verlassen: Die laufende Sitzung wird verworfen.
+    fn home_dialog(&mut self, ctx: &egui::Context) {
+        if !self.confirm_home {
+            return;
+        }
+        let mut leave = false;
+        let mut stay = false;
+        let what = match self.mode {
+            AppMode::Sim => t("die laufende Simulation", "the running simulation"),
+            AppMode::Plot => t("der aktuelle Plot", "the current plot"),
+            _ => t("der Stand im Arbeitsbuch", "your progress in the workbook"),
+        };
+        let resp = egui::Modal::new(egui::Id::new("confirm_home")).show(ctx, |ui| {
+            ui.set_width(380.0);
+            ui.label(RichText::new(t("Zurück zur Modusauswahl?", "Back to the mode selection?")).strong().size(17.0));
+            ui.add_space(6.0);
+            ui.label(tf!(
+                "Dabei wird {} beendet und kann danach nicht mehr aufgerufen werden.",
+                "This ends {} – it cannot be resumed afterwards.",
+                what
+            ));
+            ui.add_space(10.0);
+            ui.horizontal(|ui| {
+                if ui.button(RichText::new(t("🏠 Zur Modusauswahl", "🏠 To mode selection")).strong()).clicked() {
+                    leave = true;
+                }
+                if ui.button(t("Abbrechen", "Cancel")).clicked() {
+                    stay = true;
+                }
+            });
+        });
+        if resp.should_close() || stay {
+            self.confirm_home = false;
+        }
+        if leave {
+            self.confirm_home = false;
+            self.end_session();
+            self.mode = AppMode::Start;
+        }
+    }
+
+    /// Verwirft die Sitzung des aktuellen Modus (Neustart beim nächsten Aufruf).
+    fn end_session(&mut self) {
+        match self.mode {
+            AppMode::Sim => {
+                self.scenario = Scenario::Empty;
+                self.load_scenario(Scenario::Empty);
+                if let Some(tp) = crate::templates::load::<SimTemplate>(SIM_TEMPLATE) {
+                    self.apply_sim_template(&tp);
+                }
+                self.paused = false;
+                self.warp_idx = 0;
+                self.show_truth = false;
+                self.msg = None;
+            }
+            AppMode::Plot => self.plot = crate::plot::PlotState::new(),
+            AppMode::Workbook => self.workbook = crate::workbook::Workbook::new(),
+            AppMode::Start => {}
+        }
+    }
+
+    /// Zahnrad und Foto – in Plottumgebung und Arbeitsbuch oben.
+    fn common_bar(&mut self, ui: &mut egui::Ui) {
+        self.settings_menu(ui);
+        self.photo_button(ui);
+    }
+
+    /// Sprache und Oberfläche als Auswahlzeilen (im Zahnrad-Menü).
+    fn lang_theme_rows(&mut self, ui: &mut egui::Ui) {
+        use crate::i18n::{lang, set_lang, Lang};
+        ui.horizontal(|ui| {
+            ui.label(t("Sprache:", "Language:"));
+            for l in [Lang::De, Lang::En] {
+                if ui.selectable_label(lang() == l, l.label()).clicked() && lang() != l {
+                    set_lang(l);
+                }
+            }
+        });
+        ui.horizontal(|ui| {
+            ui.label(t("Oberfläche:", "Interface:"));
+            let before = self.ui_theme;
+            for th in [UiTheme::Dark, UiTheme::Gray, UiTheme::Light] {
+                ui.selectable_value(&mut self.ui_theme, th, th.label());
+            }
+            if self.ui_theme != before {
+                self.ui_theme.apply(ui.ctx());
+            }
+        });
+    }
+
+    /// Bildschirmfoto-Knopf.
+    fn photo_button(&mut self, ui: &mut egui::Ui) {
+        if ui
+            .button(RichText::new("📷").size(15.0))
             .on_hover_text(t(
                 "Bildschirmfoto in den Benutzerordner speichern (F12)",
                 "Save screenshot to the user folder (F12)",
@@ -2477,6 +2586,7 @@ impl RadarApp {
     fn workbook_mode(&mut self, ctx: &egui::Context) {
         egui::TopBottomPanel::top("wb_top").show(ctx, |ui| {
             ui.horizontal_wrapped(|ui| {
+                self.home_button(ui);
                 ui.label(
                     RichText::new(t("RADAR – Arbeitsbuch", "RADAR – workbook"))
                         .strong()
@@ -2515,6 +2625,7 @@ impl RadarApp {
     fn plot_mode(&mut self, ctx: &egui::Context) {
         egui::TopBottomPanel::top("plot_top").show(ctx, |ui| {
             ui.horizontal_wrapped(|ui| {
+                self.home_button(ui);
                 ui.label(
                     RichText::new(t("RADARPLOT – Plottumgebung", "RADARPLOT – plotting"))
                         .strong()
@@ -2544,6 +2655,73 @@ impl RadarApp {
             .frame(egui::Frame::default().fill(self.ui_theme.surround()))
             .show(ctx, |ui| self.plot.sheet(ui));
         self.plot.reason_window(ctx);
+    }
+
+    /// Schnellwahl des angezeigten ARPA-Ziels direkt in den Zieldaten: ◀ ▶ und Zielnummern.
+    fn target_switcher(&mut self, ui: &mut egui::Ui) {
+        let tracks: Vec<(u32, Color32)> = self
+            .arpa
+            .tracks
+            .iter()
+            .map(|tr| {
+                let col = if tr.dangerous {
+                    C_DANGER
+                } else if tr.state == TrackState::Lost {
+                    C_LOST
+                } else {
+                    C_ARPA
+                };
+                (tr.num, col)
+            })
+            .collect();
+        if tracks.is_empty() {
+            return;
+        }
+        let cur = self
+            .arpa
+            .selected
+            .and_then(|n| tracks.iter().position(|(m, _)| *m == n));
+        let step = |d: i64| -> u32 {
+            let len = tracks.len() as i64;
+            let i = match cur {
+                Some(i) => (i as i64 + d).rem_euclid(len),
+                None if d > 0 => 0,
+                None => len - 1,
+            };
+            tracks[i as usize].0
+        };
+        let mut pick = None;
+        ui.horizontal_wrapped(|ui| {
+            ui.spacing_mut().item_spacing.x = 3.0;
+            if ui
+                .small_button("◀")
+                .on_hover_text(t("Vorheriges Ziel", "Previous target"))
+                .clicked()
+            {
+                pick = Some(step(-1));
+            }
+            for (n, col) in &tracks {
+                if ui
+                    .selectable_label(
+                        self.arpa.selected == Some(*n),
+                        RichText::new(format!("{n}")).monospace().color(adapt(ui, *col)),
+                    )
+                    .clicked()
+                {
+                    pick = Some(*n);
+                }
+            }
+            if ui
+                .small_button("▶")
+                .on_hover_text(t("Nächstes Ziel", "Next target"))
+                .clicked()
+            {
+                pick = Some(step(1));
+            }
+        });
+        if let Some(n) = pick {
+            self.arpa.selected = Some(n);
+        }
     }
 
     fn info_panel(&mut self, ui: &mut egui::Ui) {
@@ -2697,6 +2875,7 @@ impl RadarApp {
         }
 
         section(ui, t("ZIELDATEN", "TARGET DATA"));
+        self.target_switcher(ui);
         let mut del = None;
         if let Some(tr) = self.arpa.selected.and_then(|n| self.arpa.track(n)) {
             let info = self.arpa.info(tr, &o, now);
@@ -3862,11 +4041,13 @@ impl eframe::App for RadarApp {
             }
             AppMode::Plot => {
                 self.plot_mode(ctx);
+                self.home_dialog(ctx);
                 self.demo_frame_snapshot(ctx);
                 return;
             }
             AppMode::Workbook => {
                 self.workbook_mode(ctx);
+                self.home_dialog(ctx);
                 self.demo_frame_snapshot(ctx);
                 return;
             }
@@ -3880,6 +4061,7 @@ impl eframe::App for RadarApp {
         self.step_sim(ctx);
 
         egui::TopBottomPanel::top("top").show(ctx, |ui| self.top_bar(ui));
+        self.home_dialog(ctx);
         egui::SidePanel::left("info")
             .resizable(false)
             .exact_width(270.0)

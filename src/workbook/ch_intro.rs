@@ -73,8 +73,8 @@ pub fn ui(ui: &mut egui::Ui, nav: &mut Option<Chapter>) {
     text(
         ui,
         t(
-            "Die Simulation zeigt alle Effekte im Zusammenspiel (Szenarien „Seegang & Regen“, „Küste“, „Zielmanöver“, „Strom“). Die Plottumgebung rechnet beliebige Begegnungen durch; aus dem Kapitel „Manuelles Plotten“ lässt sich eine Aufgabe direkt dorthin übernehmen. Gewechselt wird oben über „⟲ Modus“.",
-            "The simulation shows all effects together (scenarios “sea & rain”, “coast”, “target manoeuvre”, “current”). The plotting environment works out any encounter; from the chapter “manual plotting” a task can be opened there directly. Switch via “⟲ Mode” at the top.",
+            "Die Simulation zeigt alle Effekte im Zusammenspiel (Szenarien „Seegang & Regen“, „Küste“, „Zielmanöver“, „Strom“). Die Plottumgebung rechnet beliebige Begegnungen durch; aus dem Kapitel „Manuelles Plotten“ lässt sich eine Aufgabe direkt dorthin übernehmen. Zur Modusauswahl führt das Haus-Symbol 🏠 oben links.",
+            "The simulation shows all effects together (scenarios “sea & rain”, “coast”, “target manoeuvre”, “current”). The plotting environment works out any encounter; from the chapter “manual plotting” a task can be opened there directly. The house symbol 🏠 at the top left leads back to the mode selection.",
         ),
     );
 }

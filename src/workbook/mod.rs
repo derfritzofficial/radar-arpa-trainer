@@ -548,4 +548,19 @@ mod tests {
         crate::i18n::set_lang(crate::i18n::Lang::De);
     }
 
+    /// Kapitel 1 muss sich selbst neu zeichnen lassen – sonst läuft die Welle nur bei Mausbewegung.
+    #[test]
+    fn wave_chapter_keeps_animating() {
+        let ctx = egui::Context::default();
+        let mut wb = Workbook::new();
+        wb.current = Chapter::Wave;
+        for _ in 0..2 {
+            let _ = ctx.run(egui::RawInput::default(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    let _ = wb.content(ui);
+                });
+            });
+        }
+        assert!(ctx.has_requested_repaint());
+    }
 }

@@ -1348,10 +1348,10 @@ impl PlotState {
         });
         ui.horizontal(|ui| {
             if ui
-                .button(t("💾 Als Standard", "💾 Save as standard"))
+                .button(RichText::new("💾").size(15.0))
                 .on_hover_text(t(
-                    "Aktuelle Einstellungen inkl. Ziele als Standard-Template speichern – wird beim Start geladen.",
-                    "Save the current settings incl. targets as standard template – loaded at start-up.",
+                    "Als Standard speichern: aktuelle Einstellungen inkl. Ziele als Standard-Template speichern – wird beim Start geladen.",
+                    "Save as standard: the current settings incl. targets as standard template – loaded at start-up.",
                 ))
                 .clicked()
             {
@@ -1361,10 +1361,10 @@ impl PlotState {
                 });
             }
             if ui
-                .button(t("↺ Standard zurücksetzen", "↺ Reset standard"))
+                .button(RichText::new("↺").size(15.0))
                 .on_hover_text(t(
-                    "Standard-Template auf Werkseinstellung zurücksetzen (nur Ziel A, leer). Die aktuelle Eingabe bleibt erhalten.",
-                    "Reset the standard template to factory settings (target A only, empty). Current input is kept.",
+                    "Standard zurücksetzen: Standard-Template auf Werkseinstellung zurücksetzen (nur Ziel A, leer). Die aktuelle Eingabe bleibt erhalten.",
+                    "Reset standard: back to factory settings (target A only, empty). Current input is kept.",
                 ))
                 .clicked()
             {

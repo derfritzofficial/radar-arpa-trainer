@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Radar ARPA Trainer
+Comment=Radar and ARPA training simulator
+Comment[de]=Radar- und ARPA-Trainingssimulator
+Exec=radar-arpa-trainer
+Icon=radar-arpa-trainer
+Terminal=false
+Categories=Education;Science;
+StartupWMClass=radar-arpa-trainer

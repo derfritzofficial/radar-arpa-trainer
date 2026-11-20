@@ -99,6 +99,8 @@ impl State {
         );
         if self.run {
             self.phase += ui.input(|i| i.stable_dt).min(0.1) as f64 * 1.5;
+            // ohne Neuzeichnen-Auftrag malt egui nur bei Eingaben (z. B. Mausbewegung)
+            ui.ctx().request_repaint();
         }
 
         // Welle über der Zeit

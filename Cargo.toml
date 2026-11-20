@@ -32,3 +32,39 @@ name = "Radar ARPA Trainer"
 identifier = "de.training.radar-arpa-trainer"
 category = "Education"
 icon = ["assets/icon.icns"]
+
+# Linux-Pakete: `cargo deb` (Debian/Ubuntu) und `cargo generate-rpm` (Fedora)
+[package.metadata.deb]
+name = "radar-arpa-trainer"
+maintainer = "derfritzofficial"
+section = "education"
+priority = "optional"
+extended-description = "Radar-/ARPA-Simulator mit Plottumgebung und interaktivem Arbeitsbuch."
+depends = "$auto, libgl1, libegl1, libxkbcommon0, libxkbcommon-x11-0, libwayland-client0, libwayland-egl1, libwayland-cursor0, libx11-6, libxcursor1, libxrandr2, libxi6"
+assets = [
+    ["target/release/radar-arpa-trainer", "usr/bin/", "755"],
+    ["assets/linux/radar-arpa-trainer.desktop", "usr/share/applications/", "644"],
+    ["assets/icon_256.png", "usr/share/icons/hicolor/256x256/apps/radar-arpa-trainer.png", "644"],
+]
+
+[package.metadata.generate-rpm]
+license = "Proprietary"
+summary = "Radar- und ARPA-Trainingssimulator"
+assets = [
+    { source = "target/release/radar-arpa-trainer", dest = "/usr/bin/radar-arpa-trainer", mode = "755" },
+    { source = "assets/linux/radar-arpa-trainer.desktop", dest = "/usr/share/applications/radar-arpa-trainer.desktop", mode = "644" },
+    { source = "assets/icon_256.png", dest = "/usr/share/icons/hicolor/256x256/apps/radar-arpa-trainer.png", mode = "644" },
+]
+
+[package.metadata.generate-rpm.requires]
+mesa-libGL = "*"
+mesa-libEGL = "*"
+libxkbcommon = "*"
+libxkbcommon-x11 = "*"
+libwayland-client = "*"
+libwayland-egl = "*"
+libwayland-cursor = "*"
+libX11 = "*"
+libXcursor = "*"
+libXrandr = "*"
+libXi = "*"

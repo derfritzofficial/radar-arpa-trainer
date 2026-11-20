@@ -31,3 +31,30 @@ jobs:
         with:
           name: radar-arpa-trainer-macos
           path: dist/Radar-ARPA-Trainer-macOS.zip
+
+  linux:
+    # ältere Basis (glibc 2.35), damit das Programm auch unter Debian 12 läuft
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Systembibliotheken
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
+            libxkbcommon-dev libgl1-mesa-dev libegl1-mesa-dev libwayland-dev
+      - run: cargo test --release
+      - run: cargo build --release
+      - name: Paketwerkzeuge
+        run: cargo install cargo-deb cargo-generate-rpm --locked
+      - name: Pakete bauen (.deb für Debian/Ubuntu, .rpm für Fedora)
+        run: |
+          strip target/release/radar-arpa-trainer
+          cargo deb --no-build --no-strip
+          cargo generate-rpm
+      - uses: actions/upload-artifact@v4
+        with:
+          name: radar-arpa-trainer-linux
+          path: |
+            target/debian/*.deb
+            target/generate-rpm/*.rpm
