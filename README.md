@@ -145,10 +145,7 @@ weitergegeben werden.
   Start Rechtsklick → „Öffnen“.)
 - **Windows:** Die Release-`.exe` (`cargo build --release`) startet ohne Konsolenfenster und trägt
   das Icon direkt in der Datei.
-- Das Icon wird mit `python3 scripts/make_icon.py` (Pillow) neu erzeugt. Die macOS-Kachel folgt
-  Apples Raster (Squircle 824 px auf 1024 px, ohne Schatten) – sonst setzt macOS 26 das Icon
-  verkleinert in einen grauen Rahmen.
-
+  
 ### Windows
 1. Rust installieren (rustup-init.exe, Standardoptionen inkl. „Visual Studio Build Tools“).
 2. Im Projektordner: `cargo build --release`
