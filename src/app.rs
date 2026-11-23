@@ -34,6 +34,7 @@ const C_TRIAL: Color32 = Color32::from_rgb(255, 165, 60);
 const C_OWN: Color32 = Color32::from_rgb(255, 255, 255);
 const C_CMD: Color32 = Color32::from_rgb(120, 255, 120);
 const C_TRUTH: Color32 = Color32::from_rgb(230, 90, 230);
+const C_NEW: Color32 = Color32::from_rgb(120, 255, 150);
 const C_PI: Color32 = Color32::from_rgb(120, 170, 255);
 const C_GZ: Color32 = Color32::from_rgb(255, 220, 120);
 
@@ -217,10 +218,15 @@ struct AddForm {
     kind: ShipType,
     brg: f64,
     rng: f64,
+    /// Position als Breite/Länge statt Peilung/Distanz
+    by_ll: bool,
+    ll: LatLon,
     mode: CourseMode,
     course: f64,
     speed: f64,
     cpa: f64,
+    /// Einsetz-Dialog geöffnet
+    open: bool,
 }
 
 /// Abbildung Welt ↔ Bildschirm für ein Frame.
@@ -415,6 +421,38 @@ pub(crate) fn angle_edit_enabled(
 }
 
 /// Auf die angezeigten Nachkommastellen runden und in 0..360 normieren (360,0 → 0,0).
+/// Breite oder Länge als Grad, Minuten und Halbkugel (N/S bzw. E/W).
+pub(crate) fn ll_edit(ui: &mut egui::Ui, v: &mut f64, is_lat: bool) -> bool {
+    let max = if is_lat { 89.0 } else { 179.0 };
+    let mut neg = *v < 0.0;
+    let a = v.abs();
+    let mut d = a.floor();
+    let mut m = (a - d) * 60.0;
+    let mut ch = false;
+    ui.horizontal(|ui| {
+        ch |= ui
+            .add(egui::DragValue::new(&mut d).range(0.0..=max).speed(0.2).fixed_decimals(0).suffix("°"))
+            .changed();
+        ch |= ui
+            .add(egui::DragValue::new(&mut m).range(0.0..=59.99).speed(0.05).fixed_decimals(2).suffix("'"))
+            .changed();
+        let (pos, negs) = if is_lat { ("N", "S") } else { ("E", "W") };
+        if ui.selectable_label(!neg, pos).clicked() && neg {
+            neg = false;
+            ch = true;
+        }
+        if ui.selectable_label(neg, negs).clicked() && !neg {
+            neg = true;
+            ch = true;
+        }
+    });
+    if ch {
+        let val = (d + m / 60.0).min(max + 59.99 / 60.0);
+        *v = if neg { -val } else { val };
+    }
+    ch
+}
+
 pub(crate) fn wrap_angle(x: f64, decimals: usize) -> f64 {
     let k = 10f64.powi(decimals as i32);
     norm360((x * k).round() / k)
@@ -521,6 +559,7 @@ struct SimTemplate {
     accel: f64,
     gz_inner: f64,
     gz_outer: f64,
+    home_pos: LatLon,
 }
 
 /// Werkseinstellung
@@ -558,6 +597,7 @@ impl Default for SimTemplate {
             accel: 0.04,
             gz_inner: 3.0,
             gz_outer: 4.0,
+            home_pos: LatLon::DEFAULT,
         }
     }
 }
@@ -608,6 +648,12 @@ pub struct RadarApp {
     show_truth: bool,
     /// Rückfrage „zurück zur Modusauswahl“ offen
     confirm_home: bool,
+    /// geografische Lage des Welt-Nullpunkts
+    geo0: LatLon,
+    /// eingestellte Startposition des Eigenschiffs
+    home_pos: LatLon,
+    /// Eingabefeld „Position setzen“
+    pos_edit: LatLon,
     show_reltrack: bool,
     snap_path: Option<std::path::PathBuf>,
     demo: Option<Demo>,
@@ -711,10 +757,16 @@ impl RadarApp {
                 course: 270.0,
                 speed: 18.0,
                 cpa: 0.5,
+                by_ll: false,
+                ll: LatLon::DEFAULT,
+                open: false,
             },
             show_help: false,
             show_truth: false,
             confirm_home: false,
+            geo0: LatLon::DEFAULT,
+            home_pos: LatLon::DEFAULT,
+            pos_edit: LatLon::DEFAULT,
             show_reltrack: true,
             real_time: 0.0,
             msg: None,
@@ -756,6 +808,13 @@ impl RadarApp {
                 if let Some(ch) = crate::workbook::Chapter::ALL.get(n) {
                     app.workbook.current = *ch;
                 }
+            }
+            if std::env::var_os("RADAR_DEMO_INSERT").is_some() {
+                app.form.open = true;
+                app.form.mode = CourseMode::Cpa;
+                app.form.brg = 50.0;
+                app.form.rng = 7.0;
+                app.form.speed = 15.0;
             }
             if std::env::var_os("RADAR_DEMO_HOME").is_some() {
                 app.confirm_home = true;
@@ -811,6 +870,7 @@ impl RadarApp {
             accel: self.world.own.accel,
             gz_inner: self.arpa.gz_inner,
             gz_outer: self.arpa.gz_outer,
+            home_pos: self.home_pos,
         }
     }
 
@@ -852,6 +912,7 @@ impl RadarApp {
         self.world.own.accel = tp.accel;
         self.arpa.gz_inner = tp.gz_inner;
         self.arpa.gz_outer = tp.gz_outer;
+        self.set_home(tp.home_pos);
     }
 
     fn say(&mut self, s: impl Into<String>) {
@@ -860,6 +921,7 @@ impl RadarApp {
 
     fn load_scenario(&mut self, sc: Scenario) {
         self.world.load_scenario(sc);
+        self.geo0 = self.home_pos.offset(-self.world.own.pos);
         self.arpa.reset();
         self.radar.clear_video();
         self.radar.clear_trails();
@@ -1089,7 +1151,29 @@ impl RadarApp {
         }
     }
 
-    fn place_target(&mut self, kind: ShipType, pos: V2) {
+    /// Geografische Position eines Weltpunkts.
+    fn ll_of(&self, w: V2) -> LatLon {
+        self.geo0.offset(w)
+    }
+
+    /// Eigenschiffsposition setzen (wird auch Startposition beim Szenario-Neustart).
+    fn set_home(&mut self, ll: LatLon) {
+        self.home_pos = ll;
+        self.pos_edit = ll;
+        self.geo0 = ll.offset(-self.world.own.pos);
+    }
+
+    /// Position aus dem Formular (Peilung/Distanz vom Eigenschiff oder Breite/Länge).
+    fn form_pos(&self) -> V2 {
+        if self.form.by_ll {
+            self.geo0.to_vec(self.form.ll)
+        } else {
+            self.world.own.pos + V2::from_bearing(self.form.brg, self.form.rng)
+        }
+    }
+
+    /// Kurs und Fahrt nach Formular: (Kurs, Fahrt, Vorgabe erreichbar?)
+    fn form_course(&self, kind: ShipType, pos: V2) -> (f64, f64, bool) {
         let speed = if kind == ShipType::Buoy {
             0.0
         } else {
@@ -1098,16 +1182,22 @@ impl RadarApp {
         let o = self.own_ref();
         let course = match self.form.mode {
             CourseMode::Manual => Some(self.form.course),
-            CourseMode::Collision => course_for_cpa(o.pos, o.gvel, pos, speed, 0.0),
-            CourseMode::Cpa => course_for_cpa(o.pos, o.gvel, pos, speed, self.form.cpa),
+            // Kurs/Fahrt gelten durchs Wasser; der Strom versetzt beide Schiffe gleich und
+            // fällt aus der Relativbewegung heraus – deshalb der Eigenvektor durchs Wasser
+            CourseMode::Collision => course_for_cpa(o.pos, o.wvel, pos, speed, 0.0),
+            CourseMode::Cpa => course_for_cpa(o.pos, o.wvel, pos, speed, self.form.cpa),
         };
-        let course = match course {
-            Some(c) => c,
-            None => {
-                self.say(t("Gewünschter CPA mit dieser Fahrt nicht erreichbar – Kurs auf Eigenschiff gesetzt", "Requested CPA not reachable at this speed – course set towards own ship"));
-                (o.pos - pos).bearing()
-            }
-        };
+        match course {
+            Some(c) => (norm360(c), speed, true),
+            None => ((o.pos - pos).bearing(), speed, false),
+        }
+    }
+
+    fn place_target(&mut self, kind: ShipType, pos: V2) {
+        let (course, speed, ok) = self.form_course(kind, pos);
+        if !ok {
+            self.say(t("Gewünschter CPA mit dieser Fahrt nicht erreichbar – Kurs auf Eigenschiff gesetzt", "Requested CPA not reachable at this speed – course set towards own ship"));
+        }
         let id = self.world.add_target(kind, pos, course, speed);
         self.say(tf!(
             "{} #{} platziert: Kurs {}, {:.1} kn",
@@ -1348,20 +1438,17 @@ impl RadarApp {
                 }
             }
         }
-        ui.menu_button(
-            t(
-                "Ziel hier platzieren  (Kurs gemäß Ziel-Formular)",
-                "Place target here  (course per target form)",
-            ),
-            |ui| {
-                for k in ShipType::ALL {
-                    if ui.button(k.name()).clicked() {
-                        self.place_target(k, wp);
-                        ui.close_menu();
-                    }
-                }
-            },
-        );
+        if ui
+            .button(t("➕ Ziel hier einsetzen …", "➕ Insert target here …"))
+            .clicked()
+        {
+            self.form.by_ll = false;
+            self.form.brg = norm360((rel.bearing() * 10.0).round() / 10.0);
+            self.form.rng = (rel.len() * 100.0).round() / 100.0;
+            self.form.ll = self.ll_of(wp);
+            self.form.open = true;
+            ui.close_menu();
+        }
         ui.separator();
         for i in 0..2 {
             if ui
@@ -2116,6 +2203,30 @@ impl RadarApp {
             }
         }
 
+        // Vorschau des Ziels im Einsetz-Dialog
+        if self.form.open {
+            let pos = self.form_pos();
+            let (c, sp, _) = self.form_course(self.form.kind, pos);
+            let vel = if self.form.kind == ShipType::Buoy {
+                V2::ZERO
+            } else {
+                V2::from_bearing(c, sp) + self.world.current()
+            };
+            let s = v.w2s(pos);
+            if v.inside(s) {
+                let st = Stroke::new(1.5_f32, C_NEW);
+                circle_clipped(p, v, s, 9.0, st, true);
+                line(p, v, s, v.w2s(pos + vel * tmin), st);
+                p.text(
+                    s + vec2(11.0, -11.0),
+                    Align2::LEFT_BOTTOM,
+                    t("neu", "new"),
+                    FontId::monospace(11.0),
+                    C_NEW,
+                );
+            }
+        }
+
         // Ausbilderansicht: wahre Positionen
         if self.show_truth {
             let cur = self.world.current();
@@ -2264,6 +2375,13 @@ impl RadarApp {
             {
                 self.load_scenario(self.scenario);
             }
+            if ui
+                .button(RichText::new("➕").size(15.0))
+                .on_hover_text(t("Ziel einsetzen (Typ, Position, Kurs, Fahrt, CPA)", "Insert target (type, position, course, speed, CPA)"))
+                .clicked()
+            {
+                self.form.open = true;
+            }
             ui.separator();
             if ui
                 .button(RichText::new(if self.paused { "▶" } else { "⏸" }).size(15.0))
@@ -2357,6 +2475,201 @@ impl RadarApp {
         })
         .response
         .on_hover_text(t("Einstellungen", "Settings"));
+    }
+
+    /// Dialog „Ziel einsetzen“: Typ, Position (Peilung/Distanz oder Breite/Länge),
+    /// Kurswahl, Fahrt und CPA – mit Vorschau auf dem Schirm und im Dialog.
+    fn insert_dialog(&mut self, ctx: &egui::Context) {
+        if !self.form.open {
+            return;
+        }
+        let mut open = true;
+        let mut insert = false;
+        let screen = ctx.screen_rect();
+        egui::Window::new(t("➕ Ziel einsetzen", "➕ Insert target"))
+            .id(egui::Id::new("insert_target"))
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(false)
+            .default_pos(pos2(screen.right() - 420.0, 60.0))
+            .show(ctx, |ui| {
+                egui::Grid::new("insert_grid")
+                    .num_columns(2)
+                    .spacing([12.0, 6.0])
+                    .show(ui, |ui| {
+                        ui.label(t("Typ", "Type"));
+                        let before = self.form.kind;
+                        egui::ComboBox::from_id_salt("ins_kind")
+                            .width(180.0)
+                            .selected_text(self.form.kind.name())
+                            .show_ui(ui, |ui| {
+                                for k in ShipType::ALL {
+                                    ui.selectable_value(&mut self.form.kind, k, k.name());
+                                }
+                            });
+                        if before != self.form.kind {
+                            self.form.speed = self.form.kind.spec().def_speed;
+                        }
+                        ui.end_row();
+
+                        ui.label(t("Position", "Position"));
+                        ui.horizontal(|ui| {
+                            let pos_now = self.form_pos();
+                            if ui.selectable_label(!self.form.by_ll, t("Peilung / Distanz", "bearing / range")).clicked() && self.form.by_ll {
+                                let rel = pos_now - self.world.own.pos;
+                                self.form.brg = norm360((rel.bearing() * 10.0).round() / 10.0);
+                                self.form.rng = (rel.len() * 100.0).round() / 100.0;
+                                self.form.by_ll = false;
+                            }
+                            if ui.selectable_label(self.form.by_ll, t("Breite / Länge", "lat / lon")).clicked() && !self.form.by_ll {
+                                self.form.ll = self.ll_of(pos_now);
+                                self.form.by_ll = true;
+                            }
+                        });
+                        ui.end_row();
+                        if self.form.by_ll {
+                            ui.label(t("  Breite", "  Lat"));
+                            ll_edit(ui, &mut self.form.ll.lat, true);
+                            ui.end_row();
+                            ui.label(t("  Länge", "  Lon"));
+                            ll_edit(ui, &mut self.form.ll.lon, false);
+                            ui.end_row();
+                        } else {
+                            ui.label("");
+                            ui.horizontal(|ui| {
+                                ui.label(t("Peilung", "Bearing"));
+                                angle_edit(ui, &mut self.form.brg, 1.0, 1, "°");
+                                ui.label(t("Distanz", "Range"));
+                                ui.add(
+                                    egui::DragValue::new(&mut self.form.rng)
+                                        .range(0.1..=40.0)
+                                        .speed(0.05)
+                                        .fixed_decimals(2)
+                                        .suffix(" nm"),
+                                );
+                            });
+                            ui.end_row();
+                        }
+
+                        ui.label(t("Kurs", "Course"));
+                        ui.horizontal(|ui| {
+                            for (m, name) in [
+                                (CourseMode::Manual, t("vorgeben", "given")),
+                                (CourseMode::Collision, t("Kollisionskurs", "collision course")),
+                                (CourseMode::Cpa, t("CPA vorgeben", "given CPA")),
+                            ] {
+                                ui.selectable_value(&mut self.form.mode, m, name);
+                            }
+                        });
+                        ui.end_row();
+                        if self.form.mode == CourseMode::Manual {
+                            ui.label("");
+                            angle_edit(ui, &mut self.form.course, 1.0, 0, "°");
+                            ui.end_row();
+                        }
+                        if self.form.mode == CourseMode::Cpa {
+                            ui.label("CPA");
+                            ui.add(
+                                egui::DragValue::new(&mut self.form.cpa)
+                                    .range(-10.0..=10.0)
+                                    .speed(0.02)
+                                    .fixed_decimals(2)
+                                    .suffix(" nm"),
+                            )
+                            .on_hover_text(t(
+                                "Das Vorzeichen (+/−) wählt die Seite, an der das Ziel vorbeiläuft",
+                                "the sign selects the passing side",
+                            ));
+                            ui.end_row();
+                        }
+                        ui.label(t("Fahrt", "Speed"));
+                        let buoy = self.form.kind == ShipType::Buoy;
+                        let max = self.form.kind.spec().max_speed.max(0.1);
+                        ui.add_enabled(
+                            !buoy,
+                            egui::DragValue::new(&mut self.form.speed)
+                                .range(0.0..=max)
+                                .speed(0.1)
+                                .fixed_decimals(1)
+                                .suffix(" kn"),
+                        );
+                        ui.end_row();
+                    });
+
+                // Vorschau: was beim Einsetzen herauskommt
+                let kind = self.form.kind;
+                let pos = self.form_pos();
+                let (c, sp, ok) = self.form_course(kind, pos);
+                let o = self.own_ref();
+                let rel = pos - o.pos;
+                let vel = if kind == ShipType::Buoy {
+                    V2::ZERO
+                } else {
+                    V2::from_bearing(c, sp) + self.world.current()
+                };
+                let (cpa, tcpa_h) = cpa_calc(rel, vel - o.gvel);
+                let ll = self.ll_of(pos);
+                ui.separator();
+                ui.label(
+                    RichText::new(format!(
+                        "{}  {:.2} nm   ·   {} {}",
+                        fb(rel.bearing()),
+                        rel.len(),
+                        ll.fmt_lat(),
+                        ll.fmt_lon()
+                    ))
+                    .monospace(),
+                );
+                let tc = if tcpa_h.is_finite() && tcpa_h > 0.0 {
+                    format!("{:.1} min", tcpa_h * 60.0)
+                } else {
+                    t("– (läuft ab)", "– (opening)").to_string()
+                };
+                ui.label(
+                    RichText::new(tf!(
+                        "Kurs {}  Fahrt {:.1} kn   ⇒   CPA {:.2} nm   TCPA {}",
+                        "course {}  speed {:.1} kn   ⇒   CPA {:.2} nm   TCPA {}",
+                        fb(c),
+                        sp,
+                        cpa,
+                        tc
+                    ))
+                    .monospace()
+                    .strong(),
+                );
+                if !ok {
+                    ui.label(
+                        RichText::new(t(
+                            "Mit dieser Fahrt ist die Vorgabe nicht erreichbar – das Ziel würde direkt auf das Eigenschiff zuhalten. Fahrt erhöhen oder Position ändern.",
+                            "This speed cannot achieve the request – the target would head straight for own ship. Increase speed or change the position.",
+                        ))
+                        .small()
+                        .color(adapt(ui, C_DANGER)),
+                    );
+                }
+                ui.label(
+                    RichText::new(t(
+                        "Vorschau grün auf dem Schirm. Kurs und Fahrt gelten durchs Wasser.",
+                        "Preview in green on the screen. Course and speed are through the water.",
+                    ))
+                    .small()
+                    .italics(),
+                );
+                ui.add_space(4.0);
+                if ui
+                    .button(RichText::new(t("➕ Einsetzen", "➕ Insert")).strong())
+                    .clicked()
+                {
+                    insert = true;
+                }
+            });
+        if insert {
+            let pos = self.form_pos();
+            self.place_target(self.form.kind, pos);
+        }
+        if !open {
+            self.form.open = false;
+        }
     }
 
     /// Haus-Symbol ganz links: zurück zur Modusauswahl (mit Rückfrage).
@@ -2753,6 +3066,8 @@ impl RadarApp {
                 format!("COG {}  SOG {:5.1}", fb(o.gvel.bearing()), o.gvel.len()),
             );
             mono(ui, format!("ROT {:+6.1} °/min", own.rot * 60.0));
+            let ll = self.geo0.offset(own.pos);
+            mono(ui, format!("POS {} {}", ll.fmt_lat(), ll.fmt_lon()));
             if self.world.current_drift > 0.0 {
                 mono(
                     ui,
@@ -2870,6 +3185,8 @@ impl RadarApp {
                 ui,
                 format!("rel. {}", fb(c.bearing() - self.world.own.heading)),
             );
+            let ll = self.ll_of(self.world.own.pos + c);
+            mono(ui, format!("{} {}", ll.fmt_lat(), ll.fmt_lon()));
         } else {
             mono_c(ui, "–", Color32::GRAY);
         }
@@ -2907,6 +3224,8 @@ impl RadarApp {
                 format!("BRG {}  RNG {:5.2}", fb(info.brg), info.rng),
                 col,
             );
+            let ll = self.ll_of(tr.display_pos(now));
+            mono_c(ui, format!("POS {} {}", ll.fmt_lat(), ll.fmt_lon()), col);
             if info.valid {
                 mono_c(
                     ui,
@@ -3263,6 +3582,32 @@ impl RadarApp {
             });
 
         egui::CollapsingHeader::new(RichText::new(t("🚢 Eigenschiff", "🚢 Own ship")).strong()).default_open(true).show(ui, |ui| {
+            let now_ll = self.ll_of(self.world.own.pos);
+            ui.horizontal(|ui| {
+                ui.label(t("Position:", "Position:"));
+                ui.label(RichText::new(format!("{} {}", now_ll.fmt_lat(), now_ll.fmt_lon())).monospace());
+            });
+            ui.horizontal(|ui| {
+                ui.label(t("Breite", "Lat"));
+                ll_edit(ui, &mut self.pos_edit.lat, true);
+            });
+            ui.horizontal(|ui| {
+                ui.label(t("Länge", "Lon"));
+                ll_edit(ui, &mut self.pos_edit.lon, false);
+                if ui
+                    .button(t("Setzen", "Set"))
+                    .on_hover_text(t(
+                        "Eigenschiff auf diese Position setzen. Ziele behalten Peilung und Abstand; beim Szenario-Neustart beginnt das Schiff hier. Mit 💾 als Standard speicherbar.",
+                        "Put own ship on this position. Targets keep bearing and range; on scenario restart the ship starts here. Can be saved as standard with 💾.",
+                    ))
+                    .clicked()
+                {
+                    let ll = self.pos_edit;
+                    self.set_home(ll);
+                    self.say(tf!("Eigenschiffsposition {} {}", "Own ship position {} {}", ll.fmt_lat(), ll.fmt_lon()));
+                }
+            });
+            ui.separator();
             let own = &mut self.world.own;
             ui.horizontal(|ui| {
                 ui.label(t("Sollkurs:", "Set course:"));
@@ -3569,98 +3914,16 @@ impl RadarApp {
         )
         .default_open(false)
         .show(ui, |ui| {
-            ui.horizontal(|ui| {
-                ui.label(t("Typ:", "Type:"));
-                let before = self.form.kind;
-                egui::ComboBox::from_id_salt("kind")
-                    .width(170.0)
-                    .selected_text(self.form.kind.name())
-                    .show_ui(ui, |ui| {
-                        for k in ShipType::ALL {
-                            ui.selectable_value(&mut self.form.kind, k, k.name());
-                        }
-                    });
-                if before != self.form.kind {
-                    self.form.speed = self.form.kind.spec().def_speed;
-                }
-            });
-            ui.horizontal(|ui| {
-                ui.label(t("Peilung", "Bearing"));
-                angle_edit(ui, &mut self.form.brg, 1.0, 0, "°");
-                ui.label(t("Distanz", "Distance"));
-                ui.add(
-                    egui::DragValue::new(&mut self.form.rng)
-                        .range(0.1..=30.0)
-                        .speed(0.05)
-                        .fixed_decimals(2)
-                        .suffix(" nm"),
-                );
-            });
-            ui.horizontal(|ui| {
-                ui.label(t("Kurswahl:", "Course mode:"));
-                egui::ComboBox::from_id_salt("cmode")
-                    .selected_text(match self.form.mode {
-                        CourseMode::Manual => t("Kurs manuell", "Manual course"),
-                        CourseMode::Collision => t("Kollisionskurs", "Collision course"),
-                        CourseMode::Cpa => t("CPA vorgeben", "Given CPA"),
-                    })
-                    .show_ui(ui, |ui| {
-                        ui.selectable_value(
-                            &mut self.form.mode,
-                            CourseMode::Manual,
-                            t("Kurs manuell", "Manual course"),
-                        );
-                        ui.selectable_value(
-                            &mut self.form.mode,
-                            CourseMode::Collision,
-                            t("Kollisionskurs", "Collision course"),
-                        );
-                        ui.selectable_value(
-                            &mut self.form.mode,
-                            CourseMode::Cpa,
-                            t("CPA vorgeben", "Given CPA"),
-                        );
-                    });
-            });
-            ui.horizontal(|ui| {
-                if self.form.mode == CourseMode::Manual {
-                    ui.label(t("Kurs", "Course"));
-                    angle_edit(ui, &mut self.form.course, 1.0, 0, "°");
-                }
-                ui.label(t("Fahrt", "Speed"));
-                ui.add(
-                    egui::DragValue::new(&mut self.form.speed)
-                        .range(0.0..=35.0)
-                        .speed(0.1)
-                        .fixed_decimals(1)
-                        .suffix(" kn"),
-                );
-                if self.form.mode == CourseMode::Cpa {
-                    ui.label("CPA");
-                    ui.add(
-                        egui::DragValue::new(&mut self.form.cpa)
-                            .range(-10.0..=10.0)
-                            .speed(0.02)
-                            .fixed_decimals(2)
-                            .suffix(" nm"),
-                    )
-                    .on_hover_text(t(
-                        "Vorzeichen wählt die Passierseite",
-                        "Sign selects the passing side",
-                    ));
-                }
-            });
             if ui
-                .button(t("➕ Ziel hinzufügen", "➕ Add target"))
+                .button(RichText::new(t("➕ Ziel einsetzen …", "➕ Insert target …")).strong())
                 .clicked()
             {
-                let pos = self.world.own.pos + V2::from_bearing(self.form.brg, self.form.rng);
-                self.place_target(self.form.kind, pos);
+                self.form.open = true;
             }
             ui.label(
                 RichText::new(t(
-                    "Oder: Rechtsklick auf den Schirm, dann „Ziel hier platzieren“.",
-                    "Or: right-click on the screen, then “Place target here”.",
+                    "Oder: ➕ in der Kopfleiste bzw. Rechtsklick auf den Schirm → „Ziel hier einsetzen“. Kurs und Fahrt vorhandener Ziele lassen sich unten ändern.",
+                    "Or: ➕ in the header or right-click on the screen → “Insert target here”. Course and speed of existing targets can be changed below.",
                 ))
                 .small()
                 .italics(),
@@ -4062,6 +4325,7 @@ impl eframe::App for RadarApp {
 
         egui::TopBottomPanel::top("top").show(ctx, |ui| self.top_bar(ui));
         self.home_dialog(ctx);
+        self.insert_dialog(ctx);
         egui::SidePanel::left("info")
             .resizable(false)
             .exact_width(270.0)

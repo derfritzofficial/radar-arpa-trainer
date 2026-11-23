@@ -53,7 +53,11 @@ oder **Plottumgebung** (klassisches Radarplotten) oder **Arbeitsbuch**. Das Haus
 links führt nach einer Rückfrage zurück zur Auswahl – die laufende Sitzung wird dabei beendet.
 Sprache und Oberfläche liegen im Zahnrad-Menü ⚙, in der Simulation zusätzlich Ausbilderansicht
 (wahre Ziele), Zeitraffer und Hilfe;
-💾 speichert die Einstellungen als Standard, ↺ setzt den Standard zurück. Die Sprache (Deutsch/Englisch) folgt der Systemeinstellung und ist
+💾 speichert die Einstellungen als Standard, ↺ setzt den Standard zurück.
+Ziele setzt man über ➕ in der Kopfleiste oder per Rechtsklick „Ziel hier einsetzen …“: Typ,
+Position (Peilung/Distanz oder Breite/Länge), Kurs (vorgegeben, Kollisionskurs oder mit
+CPA-Vorgabe) und Fahrt, mit Vorschau von CPA/TCPA. Die Eigenschiffsposition wird im Bereich
+„Eigenschiff“ gesetzt; Zieldaten und Cursor zeigen dazu Breite und Länge. Die Sprache (Deutsch/Englisch) folgt der Systemeinstellung und ist
 im Programm umschaltbar.
 
 ## Arbeitsbuch

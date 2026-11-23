@@ -242,3 +242,76 @@ pub fn point_in_poly(p: V2, poly: &[V2]) -> bool {
     }
     inside
 }
+
+/// Geografische Position in Grad (Nord und Ost positiv).
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct LatLon {
+    pub lat: f64,
+    pub lon: f64,
+}
+
+impl LatLon {
+    /// Voreinstellung: Deutsche Bucht, 54°00,0′N 007°30,0′E
+    pub const DEFAULT: LatLon = LatLon { lat: 54.0, lon: 7.5 };
+
+    /// Position, die um `d` (sm, x = Ost, y = Nord) versetzt ist – ebene Karte mit
+    /// der Abweitung dieses Bezugspunkts (für die Entfernungen am Radar genau genug).
+    pub fn offset(self, d: V2) -> LatLon {
+        let k = (60.0 * self.lat.to_radians().cos()).max(1e-6);
+        LatLon {
+            lat: self.lat + d.y / 60.0,
+            lon: norm180(self.lon + d.x / k),
+        }
+    }
+
+    /// Versatz (sm) von diesem Bezugspunkt zu `p` – Umkehrung von [`LatLon::offset`].
+    pub fn to_vec(self, p: LatLon) -> V2 {
+        let k = 60.0 * self.lat.to_radians().cos();
+        V2::new(norm180(p.lon - self.lon) * k, (p.lat - self.lat) * 60.0)
+    }
+
+    pub fn fmt_lat(self) -> String {
+        fmt_dm(self.lat, 2, if self.lat >= 0.0 { 'N' } else { 'S' })
+    }
+
+    pub fn fmt_lon(self) -> String {
+        fmt_dm(self.lon, 3, if self.lon >= 0.0 { 'E' } else { 'W' })
+    }
+}
+
+impl Default for LatLon {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
+/// Grad und Minuten, z. B. 054°03.2'N
+fn fmt_dm(v: f64, deg_digits: usize, hemi: char) -> String {
+    let tenths = (v.abs() * 600.0).round() as i64;
+    let (d, m10) = (tenths / 600, tenths % 600);
+    format!(
+        "{:0w$}°{:02}.{}'{}",
+        d,
+        m10 / 10,
+        m10 % 10,
+        hemi,
+        w = deg_digits
+    )
+}
+
+#[cfg(test)]
+mod geo_tests {
+    use super::*;
+
+    #[test]
+    fn latlon_round_trip_and_format() {
+        let o = LatLon { lat: 54.0, lon: 7.5 };
+        let d = V2::new(3.2, -5.7);
+        let p = o.offset(d);
+        let back = o.to_vec(p);
+        assert!((back.x - d.x).abs() < 1e-9 && (back.y - d.y).abs() < 1e-9);
+        // 6 sm nach Nord = 6 Bogenminuten Breite
+        assert_eq!(o.offset(V2::new(0.0, 6.0)).fmt_lat(), "54°06.0'N");
+        assert_eq!(LatLon { lat: -33.5, lon: -70.25 }.fmt_lon(), "070°15.0'W");
+    }
+}

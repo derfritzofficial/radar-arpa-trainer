@@ -467,7 +467,8 @@ impl World {
         cpa: f64,
     ) -> u32 {
         let pos = self.own.pos + V2::from_bearing(brg, rng);
-        let ov = self.own.ground_vel(self.current());
+        // Relativbewegung ist vom Strom unabhängig: Eigenvektor durchs Wasser
+        let ov = self.own.water_vel();
         let course = course_for_cpa(self.own.pos, ov, pos, speed, cpa)
             .or_else(|| course_for_cpa(self.own.pos, ov, pos, speed, -cpa))
             .unwrap_or(norm360(brg + 180.0));
@@ -646,6 +647,30 @@ impl World {
                 self.add_target_cpa(Container, 60.0, 10.0, 16.0, 1.0);
                 self.sea_state = 2;
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod cpa_tests {
+    use super::*;
+    use crate::util::cpa_calc;
+
+    /// Ein mit CPA-Vorgabe eingesetztes Ziel erreicht diesen CPA auch bei Strom.
+    #[test]
+    fn target_with_given_cpa_under_current() {
+        let mut w = World::new();
+        w.load_scenario(Scenario::Empty);
+        w.current_set = 120.0;
+        w.current_drift = 2.5;
+        for (brg, cpa) in [(40.0, 1.0), (300.0, 0.5), (200.0, 0.0)] {
+            let id = w.add_target_cpa(ShipType::Container, brg, 8.0, 16.0, cpa);
+            let tg = w.targets.iter().find(|t| t.id == id).unwrap();
+            let cur = w.current();
+            let rel_v = tg.ground_vel(cur) - w.own.ground_vel(cur);
+            let (got, tcpa) = cpa_calc(tg.pos - w.own.pos, rel_v);
+            assert!(tcpa > 0.0, "Ziel läuft ab");
+            assert!((got - cpa).abs() < 1e-6, "CPA {got} statt {cpa}");
         }
     }
 }
