@@ -1,6 +1,6 @@
 [package]
 name = "radar-arpa-trainer"
-version = "0.1.0"
+version = "1.2.0"
 edition = "2021"
 description = "Radar- und ARPA-Trainingssimulator (Windows / macOS / Linux)"
 
